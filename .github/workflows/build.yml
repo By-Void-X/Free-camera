@@ -1,50 +1,53 @@
-name: Build LeviPack
+name: build-structura
 
 on:
-  push:
-    branches: [ main ]
-    tags: [ 'v*' ]
-  pull_request:
   workflow_dispatch:
+  push:
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: '17'
+      - name: Unzip project (structura-src.zip)
+        run: unzip -q structura-src.zip
 
-      - name: Set up Android SDK and required packages
-        uses: android-actions/setup-android@v3
-        with:
-          packages: |
-            platform-tools
-            platforms;android-28
-            ndk;28.2.13676358
+      - name: Install tools
+        run: sudo apt-get update && sudo apt-get install -y ninja-build cmake python3 python3-pil curl zlib1g-dev unzip
 
-      - name: Install Ninja
+      - name: Download Android NDK r28c (official, to the path scripts/build.sh expects)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ninja-build
+          mkdir -p "$HOME/.cache/ndk"
+          curl -fL -o /tmp/ndk.zip https://dl.google.com/android/repository/android-ndk-r28c-linux.zip
+          unzip -q /tmp/ndk.zip -d "$HOME/.cache/ndk"
+          test -x "$HOME/.cache/ndk/android-ndk-r28c/toolchains/llvm/prebuilt/linux-x86_64/bin/clang++"
 
-      - name: Build ARM64 LeviPack
-        run: chmod +x scripts/build.sh && ./scripts/build.sh arm64-v8a
+      - name: Fetch preloader-android SDK (CMake expects ../vendor/preloader-android)
+        run: |
+          mkdir -p vendor
+          git clone --depth 1 https://github.com/LiteLDev/preloader-android vendor/preloader-android
 
-      - name: Upload LeviPack artifact
+      - name: Build Structura.levipack
+        working-directory: structura
+        shell: bash
+        run: |
+          set -o pipefail
+          bash scripts/build.sh 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Show error on Summary page (only when the build failed)
+        if: failure()
+        shell: bash
+        run: |
+          {
+            echo "## Build gagal, 120 baris log terakhir"
+            echo '```'
+            tail -n 120 "$GITHUB_WORKSPACE/build.log" 2>/dev/null || echo "build.log tidak ada: error terjadi sebelum build dimulai"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload
         uses: actions/upload-artifact@v4
         with:
-          name: Freecam-Vertical-Controls-levipack
-          path: build-arm64-v8a/*.levipack
-          if-no-files-found: error
-
-      - name: Publish release asset
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: build-arm64-v8a/*.levipack
+          name: Structura
+          path: structura/release/Structura.levipack
