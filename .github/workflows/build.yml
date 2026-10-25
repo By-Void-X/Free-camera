@@ -21,6 +21,13 @@ jobs:
           "$SDKM" "platforms;android-28" "ndk;28.2.13676358"
           sudo apt-get update
           sudo apt-get install -y ninja-build
+      - name: Extract zip if repo contains only the zip
+        run: |
+          if [ ! -f CMakeLists.txt ]; then
+            for z in *.zip; do
+              [ -f "$z" ] && echo "Ekstrak $z" && unzip -oq "$z"
+            done
+          fi
       - name: Check repo files
         run: |
           echo "Isi repo:"; ls -la
